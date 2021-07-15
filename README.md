@@ -41,12 +41,30 @@ If you'd like to build it from source using [catkin_tools](https://catkin-tools.
 ```bash
 mkdir -p novatel/src
 cd novatel
-catkin init
-catkin config --cmake-args -DCMAKE_BUILD_TYPE=RelWithDebInfo
+catkin _make
+catkin_make -DCMAKE_BUILD_TYPE=RelWithDebInfo
 cd src
 git clone https://github.com/swri-robotics/novatel_gps_driver
 rosdep install . --from-paths -i
-catkin build
+catkin_make
+```
+
+or use the second way:
+
+```bash
+mkdir -p novatel/src
+cd novatel
+catkin_make
+git clone https://github.com/swri-robotics/novatel_gps_driver
+
+sudo apt install ros-melodic-swri-math-util
+sudo apt install ros-melodic-swri-roscpp
+sudo apt install ros-melodic-swri-serial-util
+sudo apt install ros-melodic-swri-string-util
+sudo apt install ros-melodic-swri-nodelet 
+sudo apt install libpcap-dev
+
+catkin_make
 ```
 
 Then create a `.launch` file and configure it as desired:
@@ -125,7 +143,7 @@ Nodelets
         - `publish_gphdt`: `true` to publish novatel_gps_msgs/Gphdt messages.
             - Default: `false`
         - `publish_imu_messages`: `true` to publish novatel_gps_msgs/NovatelCorrectedImuData, novatel_gps_msgs/Inspva,
-        novatel_gps_msgs/Inspvax, novatel_gps_msgs/Insstdev, and sensor_msgs/Imu messages.
+          novatel_gps_msgs/Inspvax, novatel_gps_msgs/Insstdev, and sensor_msgs/Imu messages.
             - Default: `false`
         - `publish_nmea_messages`: `true` to publish novatel_gps_msgs/Gpgga and novatel_gps_msgs/Gprmc messages.
             - Default: `false`
@@ -134,17 +152,17 @@ Nodelets
         - `publish_novatel_heading2`: `true` to publish novatel_gps_msgs/Heading2 messages.
             - Default: `false`
         - `publish_novatel_positions`: `true` to publish novatel_gps_msgs/NovatelPosition messages.  Note that even if
-        this is false, these logs will always be requested from the receiver in order to generate `gps_msgs/GPSFix`
-        messages.
+          this is false, these logs will always be requested from the receiver in order to generate `gps_msgs/GPSFix`
+          messages.
             - Default: `false`
         - `publish_novatel_psrdop2`: `true` to publish novatel_gps_msgs/NovatelPsrdop2 messages.  If set, the data from
-        these messages will be used to fill in the DoP values in `gps_msgs/GPSFix` messages.  Note that these messages
-        are only published when the values change, not at the standard polling rate.
+          these messages will be used to fill in the DoP values in `gps_msgs/GPSFix` messages.  Note that these messages
+          are only published when the values change, not at the standard polling rate.
             - Default: `false`
         - `publish_novatel_utm_positions`: `true` to publish novatel_gps_msgs/NovatelUtmPosition messages.
             - Default: `false`
         - `publish_novatel_velocity`: `true` to publish novatel_gps_msgs/NovatelVelocity messages.  If set, the data
-        from these messages will be used to fill in the speed and track values in `gps_msgs/GPSFix` messages.
+          from these messages will be used to fill in the speed and track values in `gps_msgs/GPSFix` messages.
             - Default: `false`
         - `publish_novatel_xyz_positions`: `true` to publish novatel_gps_msgs/NovatelXYZ messages.
             - Default: `false`
@@ -166,13 +184,13 @@ Nodelets
             but ASCII logs are easier to parse for a human.
             - Default: `false`
         - `wait_for_sync`: `true` in order to wait for both BESTPOS and BESTVEL messages to arrive before publishing
-        `gps_msgs/GPSFix` messages.  If this is `false`, GPSFix messages will be published immediately when BESTPOS
-        messages are received, but a side effect is that the driver will often be unable to fill in the speed & track
-        fields.  This has no effect if `publish_novatel_velocity` is `false`.
+          `gps_msgs/GPSFix` messages.  If this is `false`, GPSFix messages will be published immediately when BESTPOS
+          messages are received, but a side effect is that the driver will often be unable to fill in the speed & track
+          fields.  This has no effect if `publish_novatel_velocity` is `false`.
             - Default: `true`
     2. **ROS Topic Subscriptions**
         - `/gps_sync` *(std_msgs/Time)*: *(optional)* Timestamped sync pulses from a DIO module. 
-    These are used to improve the accuracy of the time stamps of the messages published.
+        These are used to improve the accuracy of the time stamps of the messages published.
     3. **ROS Topic Publications**
         - `/bestpos` *(novatel_gps_msgs/NovatelPosition)*: [BESTPOS](http://docs.novatel.com/OEM7/Content/Logs/BESTPOS.htm) logs
         - `/bestutm` *(novatel_gps_msgs/NovatelUtmPosition)*: [BESTUTM](http://docs.novatel.com/OEM7/Content/Logs/BESTUTM.htm) logs
