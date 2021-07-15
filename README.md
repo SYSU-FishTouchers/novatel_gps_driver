@@ -67,6 +67,16 @@ sudo apt install libpcap-dev
 catkin_make
 ```
 
+
+
+Then add the system user to the dialout group to obtain serial permissions:
+
+```bash
+sudo usermod -aG dialout [username]
+```
+
+
+
 Then create a `.launch` file and configure it as desired:
 
 ```xml
