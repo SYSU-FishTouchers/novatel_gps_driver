@@ -1,6 +1,7 @@
 <?xml version="1.0" ?>
 <package format="2">
   <name>novatel_gps_driver</name>
+ 
   <version>3.9.0</version>
   <description>
   Driver for NovAtel receivers
@@ -12,7 +13,11 @@
 
   <url type="repository">https://github.com/swri-robotics/novatel_gps_driver</url>
 
+
+
   <buildtool_depend>catkin</buildtool_depend>
+
+
   <depend>boost</depend>
   <depend>diagnostic_msgs</depend>
   <depend>diagnostic_updater</depend>

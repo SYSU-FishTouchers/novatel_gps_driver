@@ -1,0 +1,16 @@
+<launch>
+    <!--
+    终端将
+    -->
+    <arg name="serial_port" default="/dev/ttyUSB1" />
+    <arg name="serial_baudrate" default="115200" />
+    <arg name="imu_frequency" default="1" />
+    <arg name="imu_frame_id_param" default="gnss" />
+
+    <node pkg="serial_port" type="serial_port" name="serial_port" output="screen" >
+        <param name="serial_port" value="$(arg serial_port)" />
+        <param name="serial_baudrate" value="$(arg serial_baudrate)" />
+        <param name="imu_frequency" value="$(arg imu_frequency)" />
+        <param name="imu_frame_id_param" value="$(arg imu_frame_id_param)" />
+    </node>
+</launch>

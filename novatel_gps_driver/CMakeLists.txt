@@ -101,6 +101,7 @@ target_link_libraries(novatel_gps_node
 )
 set_target_properties(novatel_gps_node PROPERTIES COMPILE_FLAGS "-std=c++11")
 
+
 ### Build unit tests
 if(CATKIN_ENABLE_TESTING)
   find_package(rostest REQUIRED)
@@ -113,6 +114,10 @@ if(CATKIN_ENABLE_TESTING)
   target_link_libraries(novatel_gps_tests ${PROJECT_NAME})
   set_target_properties(novatel_gps_tests PROPERTIES COMPILE_FLAGS "-std=c++11")
 endif()
+
+# add_executable(serial_port src/nodelets/serial_port.cpp ) 
+# add_dependencies(serial_port ${catkin_EXPORTED_TARGETS})
+# target_link_libraries(serial_port ${catkin_LIBRARIES})
 
 ### Install Libraries and Headers ###
 install(TARGETS 

@@ -182,11 +182,11 @@ namespace novatel_gps_driver
       publish_gpgsa_(false),
       publish_gpgsv_(false),
       publish_gphdt_(false),
-      imu_rate_(100.0),
-      imu_sample_rate_(-1),
+      imu_rate_(20.0),
+      imu_sample_rate_(20),
       span_frame_to_ros_frame_(false),
       publish_clock_steering_(false),
-      publish_imu_messages_(false),
+      publish_imu_messages_(true),
       publish_novatel_positions_(false),
       publish_novatel_xyz_positions_(false),
       publish_novatel_utm_positions_(false),
@@ -195,7 +195,7 @@ namespace novatel_gps_driver
       publish_novatel_dual_antenna_heading_(false),
       publish_novatel_psrdop2_(false),
       publish_nmea_messages_(false),
-      publish_range_messages_(false),
+      publish_range_messages_(true),
       publish_time_messages_(false),
       publish_trackstat_(false),
       publish_diagnostics_(true),
@@ -344,7 +344,7 @@ namespace novatel_gps_driver
 
       if (publish_novatel_heading2_)
       {
-	novatel_heading2_pub_ = swri::advertise<novatel_gps_msgs::NovatelHeading2>(node, "heading2", 100);
+	      novatel_heading2_pub_ = swri::advertise<novatel_gps_msgs::NovatelHeading2>(node, "heading2", 100);
       }
 
       if (publish_novatel_dual_antenna_heading_)

@@ -33,6 +33,7 @@
 #include <novatel_gps_driver/parsers/message_parser.h>
 #include <novatel_gps_msgs/NovatelCorrectedImuData.h>
 
+
 namespace novatel_gps_driver
 {
   class CorrImuDataParser : public MessageParser<novatel_gps_msgs::NovatelCorrectedImuDataPtr>

@@ -6,7 +6,7 @@
     <rosparam>
       verbose: false
       connection_type: serial
-      device: /dev/ttyUSB0
+      device: /dev/ttyUSB1
       use_binary_messages: false
       publish_novatel_positions: true
       publish_novatel_velocity: true
