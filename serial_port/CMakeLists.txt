@@ -8,10 +8,16 @@ project(serial_port)
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
 ## is used, also find other catkin packages
 find_package(catkin REQUIRED COMPONENTS
-  roscpp
-  serial
-  sensor_msgs
+        roscpp
+        serial
+        sensor_msgs
+        message_generation
+
 )
+
+add_message_files(FILES RangeInformation.msg Range.msg)
+
+generate_messages(DEPENDENCIES std_msgs serial_port )
 
 
 ## DEPENDS: system dependencies of this project that dependent projects also need

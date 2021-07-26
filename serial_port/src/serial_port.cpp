@@ -1,6 +1,7 @@
 #include <ros/ros.h>
-#include <sensor_msgs/Imu.h>
 #include <serial/serial.h>
+#include <sensor_msgs/Imu.h>
+#include <serial_port/Range.h>
 #include <iostream>
 #include <cstdlib>
 
@@ -8,7 +9,13 @@ using std::cout;
 using std::cin;
 using std::endl;
 using std::string;
+using std::vector;
 
+string check_msg(const string &);
+bool get_range_body(const string &data,vector<string> * );
+serial_port::Range get_range_msg(const vector<string> &,int );
+vector<float> get_imu_body(const string &);
+sensor_msgs::Imu get_imu_msg(const vector<float> &,int );
 /*
  * 写在最前：
  *
@@ -86,7 +93,6 @@ public:
     // 接收数据
     std::string read_line() {
         // 读取一行，最长不超过 65546 字节，结束符为 <CR><LF> = \r\n
-
         return _serial->readline(65536, "\r\n");
     }
 
@@ -106,49 +112,98 @@ int main(int argc, char **argv) {
     ros::NodeHandle n;
 
     // publisher
-    ros::Publisher imu_pub = n.advertise<sensor_msgs::Imu>("imu_raw", 1000);
-
+    ros::Publisher range_pub = n.advertise<serial_port::Range>("range", 1000);
+    ros::Publisher imu_pub = n.advertise<sensor_msgs::Imu>("imu",1000);
     // 默认参数
-    std::string imu_frame_id_param = "gnss";
+    std::string range_frame_id_param;
     std::string serial_port;
     int serial_baudrate;
-    float imu_frequency;
+    float range_frequency;//　s/次
+    float imu_frequency;//　s/次
 
-    // roslaunch 参数
+    // 从参数服务器获取值
     // 串口参数
-    n.param("/serial_port/serial_port", serial_port, std::string("/dev/ttyUSB1"));
+    n.param("/serial_port/serial_port", serial_port, std::string("/dev/ttyUSB2"));
     n.param("/serial_port/serial_baudrate", serial_baudrate, 115200);
 
     // 接收机参数
-    n.param("/serial_port/imu_frequency", imu_frequency, 1.f);
-    n.param("imu_frame_id_param", imu_frame_id_param, std::string("gnss"));
-
+    n.param("/serial_port/range_frequency", range_frequency, 1.f);
+    n.param("range_frame_id_param", range_frame_id_param, std::string("gnss"));
+    n.param("/serial_port/imu_frequency",imu_frequency,1.f);
     // 新建一个 GNSS 实例：以后改进成单例
     GNSS gnss(serial_port, serial_baudrate);
     if (!gnss.is_initialized()) {
         return -1;
     }
-    // 获取 imu 的裸数据（原始数据），发送频率 = imu_frequency
-    std::string imu_command = std::string("log rawimua ontime ") + std::to_string(imu_frequency);
+    //原始数据的发送频率
+    std::string imu_command,range_command;
+    imu_command = std::string("log rawimua ontime ") + std::to_string(imu_frequency);
+    range_command = string("log rangea ontime ") + std::to_string(range_frequency);
     gnss.send_command(imu_command);
+    gnss.send_command(range_command);
 
     ros::Rate loop_rate(500);
     int count = 0;
-
     ROS_INFO("Waiting for new message");
 
     while (ros::ok()) {
         // 这样写会阻塞：如果收不到数据，就会一直卡在这里，直到收到新的一行数据
         std::string data = gnss.read_line();
-        //if (data.empty()) continue;
-        if (data.empty()){
-//            ROS_WARN("data = empty");
-//            gnss.send_command(imu_command);
-            continue;
+        if(!data.empty())
+            ROS_INFO("data = %s",data.c_str());
+        //发布range_msg
+        if(check_msg(data)=="RANGE"){
+            //将数据存进range_body
+            vector<string> range_body;
+            bool check = get_range_body(data,&range_body);
+            if(!check){
+                continue;
+            }
+            /*debug
+            ROS_WARN("tag:range_body");
+            //cout << range_body[douhao.size()] << endl;
+            for(auto i : range_body)
+                cout << i << " ";
+            cout << endl;
+            ROS_WARN("==============================split line============================");
+            */
+            serial_port::Range range_msg = get_range_msg(range_body,count);
+            range_pub.publish(range_msg);
+        }//发布imu_msg
+        else if(check_msg(data)=="RAWIMUA"){
+            if(get_imu_body(data).empty()){
+                continue;
+            }
+            vector<float> imu_body = get_imu_body(data);
+            sensor_msgs::Imu imu_msg = get_imu_msg(imu_body, count);
+            imu_pub.publish(imu_msg);
         }
-        ROS_INFO("data = %s", data.c_str());
+        count++;
+        loop_rate.sleep();
+    }
 
-        //提取出线加速度和角速度等信息
+    return 0;
+}
+//检查获取的数据类型
+string check_msg(const string &data){
+    if(data.size()>100){
+        string check = data.substr(1,7);
+        if(check =="RANGEA,"){
+            return "RANGE";
+        }
+        else if (check == "RAWIMUA"){
+            return "RAWIMUA";
+        }
+        else{
+            //ROS_ERROR("UnKonwn data");
+        }
+    }
+    return "CheckOut";
+}
+//获取range的有效数据
+bool get_range_body(const string &data,vector<string> *range_body ){
+    std::string new_data;
+    if(data.size()>2000){
         int beg = 0, end = 0;
         for (int i=0;i<data.size();i++){
             if (data[i]==';')
@@ -156,74 +211,157 @@ int main(int argc, char **argv) {
             if(data[i]=='*')
                 end = i;
         }
-        std::string new_data = data.substr(beg+1,end-beg-1);
+        new_data = data.substr(beg+1,end-beg-1);
         //ROS_INFO("new_data = %s", new_data.c_str());
 
-        //区分字段
-        int douhao[8];//","
+        vector<unsigned> douhao;
         int j = 0;
-        for (int i=0; i < new_data.size(); i++) {
-            if (new_data[i] == ',') {
-                douhao[j] = i+1;
+        for(int i=0;i<new_data.size();i++){
+            if(new_data[i]==','){
+                douhao.push_back(i+1);
                 j++;
             }
         }
-        double x_acc = 0.0, y_acc = 0.0, z_acc = 0.0;
-        double x_gyro = 0.0, y_gyro = 0.0, z_gyro = 0.0;
-
-        if(new_data.size()>65){
-            z_acc = atof(new_data.substr(douhao[2],douhao[3]-douhao[2]).c_str());
-            z_acc = z_acc * (0.200 / 65536) / 125;
-            y_acc = atof(new_data.substr(douhao[3],douhao[4]-douhao[3]).c_str());
-            y_acc = y_acc * (0.200 / 65536) / 125;
-            x_acc = atof(new_data.substr(douhao[4],douhao[5]-douhao[4]).c_str());
-            x_acc = x_acc * (0.200 / 65536) / 125;
-            z_gyro = atof(new_data.substr(douhao[5],douhao[6]-douhao[4]).c_str());
-            z_gyro = z_gyro * (0.008 / 65536) / 125;
-            y_gyro = atof(new_data.substr(douhao[6],douhao[7]-douhao[4]).c_str());
-            y_gyro = y_gyro * (0.008 / 65536) / 125;
-            x_gyro = atof(new_data.substr(douhao[7]).c_str());
-            x_gyro = x_gyro * (0.008 / 65536) / 125;
-        }
-        else{
-            ROS_WARN("new_data.size=%lu",new_data.size());
-        }
-
         /*debug
-        ROS_INFO("z_acc: %f", z_acc);
-        ROS_INFO("y_acc: %f", y_acc);
-        ROS_INFO("x_acc: %f", x_acc);
-        ROS_INFO("z_gyro: %f", z_gyro);
-        ROS_INFO("y_gyro: %f", y_gyro);
-        ROS_INFO("x_gyro: %f\n\n", x_gyro);
+        ROS_INFO("douhao.size=%lu",douhao.size());
+        for(auto i : douhao)
+            cout << i << " ";
+        cout << endl;
+        ROS_WARN("==============================split line============================");
         */
+        //将原始range数据存进range_body
+        range_body->push_back(new_data.substr(0,douhao[0]-1));
+        for(int i=0;i<int(douhao.size())-1;i++){
+            range_body->push_back(new_data.substr(douhao[i],douhao[i+1]-douhao[i]-1));
+        }
+        range_body->push_back(new_data.substr(douhao[douhao.size()-1]));
 
-        sensor_msgs::Imu imu_msg;
-        //header
-        imu_msg.header.seq = count;
-        imu_msg.header.stamp = ros::Time::now();
-        imu_msg.header.frame_id = imu_frame_id_param;
-        //acc
-        imu_msg.linear_acceleration.x = x_acc;
-        imu_msg.linear_acceleration.y = y_acc;
-        imu_msg.linear_acceleration.z = z_acc;
-        //gyro
-        imu_msg.angular_velocity.x = x_gyro;
-        imu_msg.angular_velocity.y = y_gyro;
-        imu_msg.angular_velocity.z = z_gyro;
-        //orientation
-        imu_msg.orientation.x = 1;
-        imu_msg.orientation.y = 0;
-        imu_msg.orientation.z = 0;
-        imu_msg.orientation.w = 0;
-
-        imu_pub.publish(imu_msg);
-        count++;
-
-        loop_rate.sleep();
+    } else{
+        return false;
     }
-
-    return 0;
+    return true;
 }
+//将range数据转换成ros消息
+serial_port::Range get_range_msg(const vector<string> &range_body,int count){
+    //用于初始化range_msg
+    serial_port::RangeInformation init;
+    init.prn_number = 0;
+    init.glofreq = 0;
+    init.psr = 0.0;
+    init.psr_std = 0.0;
+    init.adr = 0.0;
+    init.adr_std = 0.0;
+    init.dopp = 0.0;
+    init.noise_density_ratio = 0.0;
+    init.locktime = 0.0;
+    init.tracking_status = 0;
+    int32_t numb_of_observ = atoi(range_body[0].c_str());
+    vector<serial_port::RangeInformation> tmp(numb_of_observ,init);
 
+    //声明range_msg
+    serial_port::Range range_msg;
+    //初始化range_msg
+    range_msg.info = tmp;
 
+    // 将range数据赋值给range_msg
+    range_msg.header.frame_id = "range_frame";
+    range_msg.header.seq = count;
+    range_msg.header.stamp = ros::Time::now();
+    range_msg.numb_of_observ = numb_of_observ;
+    for(int i=0,j=0; j<numb_of_observ; j++) {
+        range_msg.info[j].prn_number = atoi(range_body[i+1].c_str());
+        range_msg.info[j].glofreq = atoi(range_body[i+2].c_str());
+        range_msg.info[j].psr = atof(range_body[i+3].c_str());
+        range_msg.info[j].psr_std = atof(range_body[i+4].c_str());
+        range_msg.info[j].adr = atof(range_body[i+5].c_str());
+        range_msg.info[j].adr_std = atof(range_body[i+6].c_str());
+        range_msg.info[j].dopp = atof(range_body[i+7].c_str());
+        range_msg.info[j].noise_density_ratio = atof(range_body[i+8].c_str());
+        range_msg.info[j].locktime = atof(range_body[i+9].c_str());
+        range_msg.info[j].tracking_status = atoi(range_body[i+10].c_str());
+    }
+    /* debug /
+    ROS_WARN("tag:range_msg.info");
+    for(auto i : range_msg.info)
+        cout << i << " ";
+    cout << endl;
+    ROS_WARN("==============================split line============================");
+     /  */
+
+    return range_msg;
+
+}
+//获取imu的有效数据
+vector<float> get_imu_body(const string &data){
+    //提取出线加速度和角速度等信息
+    int beg = 0, end = 0;
+    for (int i=0;i<data.size();i++){
+        if (data[i]==';')
+            beg = i;
+        if(data[i]=='*')
+            end = i;
+    }
+    std::string new_data = data.substr(beg+1,end-beg-1);
+    //ROS_INFO("new_data = %s", new_data.c_str());
+    //区分字段
+    int douhao[8];//","
+    int j = 0;
+    for (int i=0; i < new_data.size(); i++) {
+        if (new_data[i] == ',') {
+            douhao[j] = i+1;
+            j++;
+        }
+    }
+    float x_acc = 0.0, y_acc = 0.0, z_acc = 0.0;
+    float x_gyro = 0.0, y_gyro = 0.0, z_gyro = 0.0;
+
+    if(new_data.size()>65){
+        z_acc = atof(new_data.substr(douhao[2],douhao[3]-douhao[2]).c_str());
+        z_acc = float(z_acc * (0.200 / 65536) / 125);
+        y_acc = atof(new_data.substr(douhao[3],douhao[4]-douhao[3]).c_str());
+        y_acc = float(y_acc * (0.200 / 65536) / 125);
+        x_acc = atof(new_data.substr(douhao[4],douhao[5]-douhao[4]).c_str());
+        x_acc = float(x_acc * (0.200 / 65536) / 125);
+        z_gyro = atof(new_data.substr(douhao[5],douhao[6]-douhao[4]).c_str());
+        z_gyro = float(z_gyro * (0.008 / 65536) / 125);
+        y_gyro = atof(new_data.substr(douhao[6],douhao[7]-douhao[4]).c_str());
+        y_gyro = float(y_gyro * (0.008 / 65536) / 125);
+        x_gyro = atof(new_data.substr(douhao[7]).c_str());
+        x_gyro = float(x_gyro * (0.008 / 65536) / 125);
+    }
+    else{
+        ROS_ERROR("new_data.size=%lu < 65",new_data.size());
+        vector<float> error;
+        return error;
+    }
+    vector<float> imu_body(6,0.0);
+    imu_body[0] = x_acc;
+    imu_body[1] = y_acc;
+    imu_body[2] = z_acc;
+    imu_body[3] = x_gyro;
+    imu_body[4] = y_gyro;
+    imu_body[5] = z_gyro;
+    return imu_body;
+}
+//将imu数据转换成ros消息
+sensor_msgs::Imu get_imu_msg(const vector<float> &imu_body,int count){
+    sensor_msgs::Imu imu_msg;
+    //header
+    imu_msg.header.seq = count;
+    imu_msg.header.stamp = ros::Time::now();
+    imu_msg.header.frame_id = "imu_frame";
+    //acc
+    imu_msg.linear_acceleration.x = imu_body[0];
+    imu_msg.linear_acceleration.y = imu_body[1];
+    imu_msg.linear_acceleration.z = imu_body[2];
+    //gyro
+    imu_msg.angular_velocity.x = imu_body[3];
+    imu_msg.angular_velocity.y = imu_body[4];
+    imu_msg.angular_velocity.z = imu_body[5];
+    //orientation
+    imu_msg.orientation.x = 1;
+    imu_msg.orientation.y = 0;
+    imu_msg.orientation.z = 0;
+    imu_msg.orientation.w = 0;
+    return imu_msg;
+}

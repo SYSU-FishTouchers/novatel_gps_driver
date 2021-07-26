@@ -1,0 +1,13 @@
+#!/bin/sh
+sudo apt install ros-melodic-swri-math-util
+
+sudo apt install ros-melodic-swri-roscpp
+
+sudo apt install ros-melodic-swri-serial-util
+
+sudo apt install ros-melodic-swri-string-util
+
+sudo apt install ros-melodic-swri-nodelet 
+
+sudo apt install libpcap-dev
+
