@@ -15,7 +15,7 @@ find_package(catkin REQUIRED COMPONENTS
 
 )
 
-add_message_files(FILES RangeInformation.msg Range.msg)
+add_message_files(FILES RangeInformation.msg Range.msg BDSephem.msg)
 
 generate_messages(DEPENDENCIES std_msgs serial_port )
 

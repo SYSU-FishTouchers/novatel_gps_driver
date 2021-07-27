@@ -2,6 +2,7 @@
 #include <serial/serial.h>
 #include <sensor_msgs/Imu.h>
 #include <serial_port/Range.h>
+#include <serial_port/BDSephem.h>
 #include <iostream>
 #include <cstdlib>
 
@@ -12,10 +13,16 @@ using std::string;
 using std::vector;
 
 string check_msg(const string &);
-bool get_range_body(const string &data,vector<string> * );
+
+bool get_data_body(const string &data,vector<string> * );
+
 serial_port::Range get_range_msg(const vector<string> &,int );
+
 vector<float> get_imu_body(const string &);
+
 sensor_msgs::Imu get_imu_msg(const vector<float> &,int );
+
+serial_port::BDSephem get_ephem_msg(const vector<string> &,int);
 /*
  * 写在最前：
  *
@@ -99,10 +106,8 @@ public:
 private:
     std::string _port;
     int _baud_rate;
-
     // 仅声明指针，构造函数中初始化
     serial::Serial* _serial;
-
     bool _initialized;
 };
 
@@ -110,10 +115,10 @@ int main(int argc, char **argv) {
     ros::init(argc, argv, "serial_port");
     // 创建句柄
     ros::NodeHandle n;
-
     // publisher
     ros::Publisher range_pub = n.advertise<serial_port::Range>("range", 1000);
     ros::Publisher imu_pub = n.advertise<sensor_msgs::Imu>("imu",1000);
+    ros::Publisher ephem_pub = n.advertise<serial_port::BDSephem>("ephem",1000);
     // 默认参数
     std::string range_frame_id_param;
     std::string serial_port;
@@ -121,29 +126,32 @@ int main(int argc, char **argv) {
     float range_frequency;//　s/次
     float imu_frequency;//　s/次
 
+
     // 从参数服务器获取值
     // 串口参数
     n.param("/serial_port/serial_port", serial_port, std::string("/dev/ttyUSB2"));
     n.param("/serial_port/serial_baudrate", serial_baudrate, 115200);
-
     // 接收机参数
     n.param("/serial_port/range_frequency", range_frequency, 1.f);
     n.param("range_frame_id_param", range_frame_id_param, std::string("gnss"));
     n.param("/serial_port/imu_frequency",imu_frequency,1.f);
+
     // 新建一个 GNSS 实例：以后改进成单例
     GNSS gnss(serial_port, serial_baudrate);
     if (!gnss.is_initialized()) {
         return -1;
     }
     //原始数据的发送频率
-    std::string imu_command,range_command;
+    std::string imu_command,range_command,ephem_command;
     imu_command = std::string("log rawimua ontime ") + std::to_string(imu_frequency);
     range_command = string("log rangea ontime ") + std::to_string(range_frequency);
+    ephem_command = "log bdsephemerisa ontime 1";
     gnss.send_command(imu_command);
     gnss.send_command(range_command);
+    gnss.send_command(ephem_command);
 
     ros::Rate loop_rate(500);
-    int count = 0;
+    int count_i = 0, count_r = 0, count_e = 0;
     ROS_INFO("Waiting for new message");
 
     while (ros::ok()) {
@@ -151,15 +159,15 @@ int main(int argc, char **argv) {
         std::string data = gnss.read_line();
         if(!data.empty())
             ROS_INFO("data = %s",data.c_str());
-        //发布range_msg
+        // 发布 range_msg
         if(check_msg(data)=="RANGE"){
-            //将数据存进range_body
+            // 将数据存进 range_body
             vector<string> range_body;
-            bool check = get_range_body(data,&range_body);
+            bool check = get_data_body(data,&range_body);
             if(!check){
                 continue;
             }
-            /*debug
+            /* debug
             ROS_WARN("tag:range_body");
             //cout << range_body[douhao.size()] << endl;
             for(auto i : range_body)
@@ -167,24 +175,45 @@ int main(int argc, char **argv) {
             cout << endl;
             ROS_WARN("==============================split line============================");
             */
-            serial_port::Range range_msg = get_range_msg(range_body,count);
+            serial_port::Range range_msg = get_range_msg(range_body,count_r);
             range_pub.publish(range_msg);
-        }//发布imu_msg
+            count_r++;
+        }// 发布 imu_msg
         else if(check_msg(data)=="RAWIMUA"){
             if(get_imu_body(data).empty()){
                 continue;
             }
             vector<float> imu_body = get_imu_body(data);
-            sensor_msgs::Imu imu_msg = get_imu_msg(imu_body, count);
+            sensor_msgs::Imu imu_msg = get_imu_msg(imu_body, count_i);
             imu_pub.publish(imu_msg);
+            count_i++;
         }
-        count++;
+        else if(check_msg(data)=="BDSEPHEM"){
+            // 将数据存进 range_body
+            vector<string> ephem_body;
+            bool check = get_data_body(data,&ephem_body);
+            if(!check){
+                continue;
+            }
+            /* debug
+            ROS_WARN("tag:ephem_body");
+            //cout << range_body[douhao.size()] << endl;
+            for(auto aaa : ephem_body)
+                cout << aaa << " ";
+            cout << endl;
+            ROS_WARN("==============================split line============================");
+            */
+            serial_port::BDSephem ephem_msg = get_ephem_msg(ephem_body,count_e);
+            ephem_pub.publish(ephem_msg);
+            count_e++;
+        }
+
         loop_rate.sleep();
     }
 
     return 0;
 }
-//检查获取的数据类型
+// 检查获取的数据类型
 string check_msg(const string &data){
     if(data.size()>100){
         string check = data.substr(1,7);
@@ -194,16 +223,20 @@ string check_msg(const string &data){
         else if (check == "RAWIMUA"){
             return "RAWIMUA";
         }
+        else if(check=="BDSEPHE"){
+            return "BDSEPHEM";
+        }
         else{
             //ROS_ERROR("UnKonwn data");
         }
     }
     return "CheckOut";
 }
-//获取range的有效数据
-bool get_range_body(const string &data,vector<string> *range_body ){
+
+// 获取 range 和 ephem 的有效数据
+bool get_data_body(const string &data,vector<string> *data_body ){
     std::string new_data;
-    if(data.size()>2000){
+    if(data.size()>200){
         int beg = 0, end = 0;
         for (int i=0;i<data.size();i++){
             if (data[i]==';')
@@ -230,18 +263,19 @@ bool get_range_body(const string &data,vector<string> *range_body ){
         ROS_WARN("==============================split line============================");
         */
         //将原始range数据存进range_body
-        range_body->push_back(new_data.substr(0,douhao[0]-1));
+        data_body->push_back(new_data.substr(0,douhao[0]-1));
         for(int i=0;i<int(douhao.size())-1;i++){
-            range_body->push_back(new_data.substr(douhao[i],douhao[i+1]-douhao[i]-1));
+            data_body->push_back(new_data.substr(douhao[i],douhao[i+1]-douhao[i]-1));
         }
-        range_body->push_back(new_data.substr(douhao[douhao.size()-1]));
+        data_body->push_back(new_data.substr(douhao[douhao.size()-1]));
 
     } else{
         return false;
     }
     return true;
 }
-//将range数据转换成ros消息
+
+// 将 range 数据转换成 ros 消息
 serial_port::Range get_range_msg(const vector<string> &range_body,int count){
     //用于初始化range_msg
     serial_port::RangeInformation init;
@@ -291,7 +325,8 @@ serial_port::Range get_range_msg(const vector<string> &range_body,int count){
     return range_msg;
 
 }
-//获取imu的有效数据
+
+// 获取 imu 的有效数据
 vector<float> get_imu_body(const string &data){
     //提取出线加速度和角速度等信息
     int beg = 0, end = 0;
@@ -343,7 +378,8 @@ vector<float> get_imu_body(const string &data){
     imu_body[5] = z_gyro;
     return imu_body;
 }
-//将imu数据转换成ros消息
+
+// 将 imu 数据转换成 ros 消息
 sensor_msgs::Imu get_imu_msg(const vector<float> &imu_body,int count){
     sensor_msgs::Imu imu_msg;
     //header
@@ -365,3 +401,40 @@ sensor_msgs::Imu get_imu_msg(const vector<float> &imu_body,int count){
     imu_msg.orientation.w = 0;
     return imu_msg;
 }
+
+// 将 ephemreis 数据转换成 ros 消息
+serial_port::BDSephem get_ephem_msg(const vector<string> &ephem_body,int count){
+    serial_port::BDSephem ephem_msg;
+    ephem_msg.sat = atoi(ephem_body[0].c_str());
+    ephem_msg.week = atoi(ephem_body[1].c_str());
+    ephem_msg.ura = atof(ephem_body[2].c_str());
+    ephem_msg.health = atoi(ephem_body[3].c_str());
+    ephem_msg.tgd1 = atof(ephem_body[4].c_str());
+    ephem_msg.tgd2 = atof(ephem_body[5].c_str());
+    ephem_msg.AODC = atoi(ephem_body[6].c_str());
+    ephem_msg.toc = atoi(ephem_body[7].c_str());
+    ephem_msg.a0 = atof(ephem_body[8].c_str());
+    ephem_msg.a1 = atof(ephem_body[9].c_str());
+    ephem_msg.a2 = atof(ephem_body[10].c_str());
+    ephem_msg.AODE = atoi(ephem_body[11].c_str());
+    ephem_msg.toe = atoi(ephem_body[12].c_str());
+    ephem_msg.RootA = atof(ephem_body[13].c_str());
+    ephem_msg.ecc = atof(ephem_body[14].c_str());
+    ephem_msg.omg = atof(ephem_body[15].c_str());
+    ephem_msg.delta_N = atof(ephem_body[16].c_str());
+    ephem_msg.M0 = atof(ephem_body[17].c_str());
+    ephem_msg.OMG_0 = atof(ephem_body[18].c_str());
+    ephem_msg.OMG = atof(ephem_body[19].c_str());
+    ephem_msg.i0 = atof(ephem_body[20].c_str());
+    ephem_msg.I_DOT = atof(ephem_body[21].c_str());
+    ephem_msg.cuc = atof(ephem_body[22].c_str());
+    ephem_msg.cus = atof(ephem_body[23].c_str());
+    ephem_msg.crc = atof(ephem_body[24].c_str());
+    ephem_msg.crs = atof(ephem_body[25].c_str());
+    ephem_msg.cic = atof(ephem_body[26].c_str());
+    ephem_msg.cis = atof(ephem_body[27].c_str());
+
+    return ephem_msg;
+}
+
+
