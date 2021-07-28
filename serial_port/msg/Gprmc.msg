@@ -1,0 +1,12 @@
+string utc
+string pos_status
+float64 latitude
+string lat_dir
+float64 longitude
+string lon_dir
+float64 speed
+float64 track 
+string date
+float64 mag_var 
+string var_dir
+string mode_ind
